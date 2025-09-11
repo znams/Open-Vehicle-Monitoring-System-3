@@ -1,0 +1,338 @@
+<div class="panel panel-primary">
+    <div class="panel-heading">Historic SoH Metrics</div>
+    <div class="receiver">
+        <p>This Web-plugin provides the historic State of Health (SoH) data of your VW e-Up vehicle.
+            The first line chart presents SoH values on the Y-axis and the date of measurement 
+            on the X-axis. The extra three lines correspond to the 
+            statistic data (maximum, minimum and average per measurement). Each individual line on
+            the graph can be hidden and shown again by clicking the corresponding element bellow the X-axis.</p>
+
+
+
+          <div class="metric chart" data-metric="xvu.b.soh.dummy,xvu.b.soh.permeasuremax,xvu.b.soh.permeasuremin,xvu.b.soh.permeasureavg" style="height:700px"> <!-- reference to C++ xvu metrics --> 
+            <div class="chart-box linechart" id="soh-line"/> <!-- CLARIFY CLASS NAME AND ID! ID IS A REFERENCE --> 
+          </div>
+
+
+<style>
+  .toggle-wrapper{
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20 px;
+}
+  .toggle-container {
+    margin-bottom: 10px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+    margin-right: 50 px;
+  }
+  .switch input { display: none; }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 26px;
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 20px; width: 20px;
+    left: 3px; bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: #2196F3;
+  }
+  input:checked + .slider:before {
+    transform: translateX(24px);
+  }
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+  }
+</style>
+
+<div class="toggle-wrapper">
+ <div class="toggle-container">
+  
+  <label class="toggle-label">
+    Show SOH Lines
+    <label class="switch">
+      <input type="checkbox" id="toggleSOH" checked>
+      <span class="slider"></span>
+    </label>
+  </label>&nbsp;&nbsp;&nbsp;
+
+  <label class="toggle-label">
+    Show Statistics
+    <label class="switch">
+      <input type="checkbox" id="toggleStats" checked>
+      <span class="slider"></span>
+    </label>
+  </label>
+ </div>
+</div>
+
+
+ <hr/>
+        <p>The next graph shows the bar charts with the statistic data (maximum, minimum and average SoH value) per battery pack.
+            Here you can analyze the overall performance of each battery pack.</p>
+
+          <div id="sohstat-perpack" class="metric chart" data-metric="xvu.b.soh.perpackmin,xvu.b.soh.perpackavg" style="height:300px">
+            <div class="chart-box barchart" id="sohstat-perpack"/>
+          </div>
+<style>
+#sohstat-perpack .highcharts-color-0 {
+   fill: #f73007;
+   stroke: #f73007;
+}
+
+#sohstat-perpack .highcharts-color-1 {
+   fill: #0727f7;
+   stroke: #0727f7;
+}
+
+</style>
+ <hr/>
+          <div class="metric chart" data-metric="xvu.b.soh.standev" style="height:400px">
+            <div class="chart-box barchart" id="standev-perpack"/>
+          </div>
+ <hr/>
+
+    </div>
+</div>
+
+<script>
+  
+const sohVector     = metrics["xvu.b.soh.dummy"];
+const perMeasureMax = metrics["xvu.b.soh.permeasuremax"];
+const perMeasureMin = metrics["xvu.b.soh.permeasuremin"];
+const perMeasureAvg = metrics["xvu.b.soh.permeasureavg"];
+
+const cells = 17; // total battery packs
+const historyLength = sohVector.length / cells; // number of historical measurements per pack
+
+// Helper: generate start-of-quarter timestamps for given number of historical entries
+function getQuarterStartDates(count) {
+  const dates = [];
+  const now = new Date();
+
+  // Snap to start of current quarter
+  let quarter = Math.floor(now.getMonth() / 3);
+  let year = now.getFullYear();
+  let month = quarter * 3;
+  let start = new Date(year, month, 1);
+
+  // Generate timestamps from oldest to newest
+  for (let i = count - 1; i >= 0; i--) {
+    let qDate = new Date(start);
+    qDate.setMonth(start.getMonth() - i * 3); // step back in 3-month chunks
+    dates.push(qDate.getTime());
+  }
+  return dates;
+}
+
+const quarterTimestamps = getQuarterStartDates(historyLength);
+
+// Build per-pack SOH series
+const sohHistory = [];
+for (let i = 0; i < cells; i++) {
+  const cellData = [];
+  for (let j = 0; j < historyLength; j++) {
+    cellData.push([quarterTimestamps[j], sohVector[i * historyLength + j]]);
+  }
+  sohHistory.push({
+    name: `Pack ${i + 1}`,
+    data: cellData
+  });
+}
+
+// Add per-measurement SOH statistics (dashed lines)
+sohHistory.push({
+  name: "Max SOH",
+  data: perMeasureMax.map((val, index) => [quarterTimestamps[index], val]),
+  dashStyle: 'Dash',
+  color: "green",
+  lineWidth: 2
+});
+
+sohHistory.push({
+  name: "Min SOH",
+  data: perMeasureMin.map((val, index) => [quarterTimestamps[index], val]),
+  dashStyle: 'Dash',
+  color: "red",
+  lineWidth: 2
+});
+
+sohHistory.push({
+  name: "Avg SOH",
+  data: perMeasureAvg.map((val, index) => [quarterTimestamps[index], val]),
+  dashStyle: 'Dash',
+  color: "blue",
+  lineWidth: 2
+});
+
+    
+let sohChart; 
+
+Highcharts.setOptions({
+time: {
+  useUTC: false
+}
+});
+
+    $(function () {
+  // Create the chart and store it in a variable
+  const sohChart = $("#soh-line").chart({
+    chart: { type: 'line', zoomType: 'x', panning: true, panKey: 'ctrl' },
+    title: { text: 'SOH History of all Battery Packs' },
+    xAxis: { type: 'datetime', title: { text: 'Time' } },
+    yAxis: { title: { text: 'State of Health (%)' }, min: 70, max: 100 },
+    tooltip: { shared: true, crosshairs: true, xDateFormat: '%A, %b %e, %Y', valueSuffix: ' %', valueDecimals: 1 },
+    legend: { enabled: true },
+    series: sohHistory
+  });
+
+  // Wait a moment to access the chart instance
+  setTimeout(() => {
+    const chart = Highcharts.charts.find(c => c && c.renderTo.id === "soh-line");
+
+    const sohCount = 17; // Adjust this if using 14 for new models
+    const statIndexes = [sohCount, sohCount + 1, sohCount + 2];
+
+    // Helper function to set visibility
+    function setSeriesVisibility(indexes, visible) {
+      indexes.forEach(i => {
+        if (chart.series[i]) chart.series[i].setVisible(visible, false);
+      });
+      chart.redraw();
+    }
+
+
+
+    // Toggle SOH pack lines
+    document.getElementById("toggleSOH").addEventListener("change", function () {
+      setSeriesVisibility([...Array(sohCount).keys()], this.checked);
+    });
+
+    // Toggle statistics lines
+    document.getElementById("toggleStats").addEventListener("change", function () {
+      setSeriesVisibility(statIndexes, this.checked);
+    });
+  }, 200); // Delay needed to ensure chart is ready
+
+      
+
+
+  
+      // Initialize new bar chart for SOH statistics per battery pack
+$("#sohstat-perpack").chart({
+  chart: { type: 'column' },
+  title: { text: 'SOH Statistics per Battery Pack' },
+  xAxis: { categories: Array.from({ length: cells }, (_, i) => `Pack ${i + 1}`) },
+  yAxis: { title: { text: 'State of Health (%)' }, min: 70, max: 100, tickInterval: 2.5 },
+  tooltip: { shared: true, valueSuffix: ' %', valueDecimals: 1 },
+  legend: { enabled: true },
+  series: [
+    { name: 'Min SOH', data: [], color: '#f73007', colorByPoint: false, },
+    { name: 'Avg SOH', data: [] },
+    {
+      name: 'Standard Deviation',
+      type: 'errorbar',
+      data: [],
+      tooltip: { pointFormat: '±{point.low} to {point.high} %<br/>' }
+    }
+  ],
+  onUpdate: function(update) {
+    var m_min = metrics["xvu.b.soh.perpackmin"] || [];
+    var m_avg = metrics["xvu.b.soh.perpackavg"] || [];
+    var m_stdev = metrics["xvu.b.soh.standev"] || [];
+
+    var cat = [], val_min = [], val_avg = [], val_err = [];
+    for (var i = 0; i < m_min.length; i++) {
+      var avg = Number((m_avg[i] || 0).toFixed(3));
+      var stdev = Number((m_stdev[i] || 0).toFixed(3));
+      var min = Number((m_min[i] || 0).toFixed(3));
+
+      cat.push(i + 1);
+      val_min.push(min);
+      val_avg.push(avg);
+      val_err.push([avg - stdev, avg + stdev]); // error bar range
+    }
+
+    this.xAxis[0].setCategories(cat);
+    this.series[0].setData(val_min);
+    this.series[1].setData(val_avg);
+    this.series[2].setData(val_err);
+  },
+});
+
+
+      $("#standev-perpack").chart({
+        chart: { type: 'column' },
+        title: { text: 'SOH Standard Deviations per Battery Pack' },
+        xAxis: { categories: Array.from({ length: cells }, (_, i) => `Pack ${i + 1}`) },
+        yAxis: { title: { text: 'Standard deviation (%)' }, min: 0, max: 4, tickInterval: 0.05, gridLineWidth: 1, tickWidth: 4, tickColor: '#000000' },
+        tooltip: { shared: true, valueSuffix: ' %' },
+        legend: { enabled: true },
+        series: [
+          { name: 'Standard Deviation', colors: ['green'], data: [], colorByPoint: false}
+        ],
+       onUpdate: function(update) {
+        // Note: the 'update' parameter contains the actual update set.
+        // You can use this to reduce chart updates to the actual changes.
+        // For this demo, we just use the global metrics object:
+        var
+          m_standev = metrics["xvu.b.soh.standev"] || [];
+
+        // Create categories (cell numbers) & rounded values:
+        var cat = [], val0 = []; 
+        for (var i = 0; i < m_standev.length; i++) {
+          cat.push(i+1);
+          val0.push(Number((m_standev[i]||0).toFixed(3)));
+
+        }
+        // Update chart:
+        this.xAxis[0].setCategories(cat);
+        this.series[0].setData(val0);
+      },
+      });
+
+  $('.action-toggleall').on('click', function() {
+  sohChart.series.forEach(s => s.setVisible(!s.visible, false));
+  sohChart.redraw();
+});
+
+  $('.action-togglesoh').on('click', function() {
+  // First 17 lines are SOH battery pack lines
+  for (let i = 0; i < 17; i++) {
+    sohChart.series[i].setVisible(!sohChart.series[i].visible, false);
+  }
+  sohChart.redraw();
+});
+
+  $('.action-togglestat').on('click', function() {
+  // Last 3 lines are stats: Max, Min, Avg
+  for (let i = 17; i < sohChart.series.length; i++) {
+    sohChart.series[i].setVisible(!sohChart.series[i].visible, false);
+  }
+  sohChart.redraw();
+});
+    });
+  </script>
+  
+  
+  
